@@ -25,6 +25,11 @@ export default function CheckoutPage() {
       return;
     }
 
+    if (!supabase) {
+      setError("Supabase is not configured yet. Add your environment variables to enable checkout.");
+      return;
+    }
+
     try {
       setUploading(true);
       setError("");
@@ -56,6 +61,11 @@ export default function CheckoutPage() {
 
     if (!uploadedUrl) {
       setError("Please upload a payment slip before placing your order.");
+      return;
+    }
+
+    if (!supabase) {
+      setError("Supabase is not configured yet. Add your environment variables to enable order creation.");
       return;
     }
 

@@ -15,6 +15,11 @@ export default function LoginPage() {
 
   async function handleEmailLogin() {
     try {
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your environment variables to enable sign in.");
+        return;
+      }
+
       setLoading(true);
       setError("");
 
@@ -33,6 +38,11 @@ export default function LoginPage() {
 
   async function handleGoogleLogin() {
     try {
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your environment variables to enable Google sign in.");
+        return;
+      }
+
       setLoading(true);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",

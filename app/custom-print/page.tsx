@@ -24,6 +24,11 @@ export default function CustomPrintPage() {
       return;
     }
 
+    if (!supabase) {
+      setError("Supabase is not configured yet. Add your environment variables to enable uploads.");
+      return;
+    }
+
     const extension = file.name.split(".").pop()?.toLowerCase();
     if (!extension || !allowedExtensions.includes(extension)) {
       setError("Only .stl, .obj, .step, and .stp files are allowed.");

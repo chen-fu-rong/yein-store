@@ -28,6 +28,12 @@ export function OrdersManager() {
 
   const fetchOrders = async () => {
     try {
+      if (!supabase) {
+        setLoading(false);
+        setError("Supabase is not configured yet. Add your environment variables to load orders.");
+        return;
+      }
+
       setLoading(true);
       const { data, error: queryError } = await supabase
         .from("orders")
@@ -50,6 +56,11 @@ export function OrdersManager() {
 
   const updateOrderStatus = async (orderId: string, status: string) => {
     try {
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your environment variables to update orders.");
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from("orders")
         .update({ status })
@@ -69,6 +80,11 @@ export function OrdersManager() {
 
   const updatePaymentStatus = async (orderId: string, paymentStatus: string) => {
     try {
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your environment variables to update payment status.");
+        return;
+      }
+
       const { error: updateError } = await supabase
         .from("orders")
         .update({ payment_status: paymentStatus })

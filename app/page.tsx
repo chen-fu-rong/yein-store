@@ -22,6 +22,22 @@ const formatPrice = (value: number) =>
 export default async function Home() {
   const supabase = await createClient();
 
+  if (!supabase) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-6 py-16">
+        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+            Storefront status
+          </p>
+          <h1 className="mt-3 text-3xl font-bold text-slate-900">Supabase is not configured yet.</h1>
+          <p className="mt-4 text-slate-600">
+            Add your NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY values to enable the catalog and auth flows.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
   const { data: products, error } = await supabase
     .from("products")
     .select("*")

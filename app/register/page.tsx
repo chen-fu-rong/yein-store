@@ -16,6 +16,11 @@ export default function RegisterPage() {
 
   async function handleRegister() {
     try {
+      if (!supabase) {
+        setError("Supabase is not configured yet. Add your environment variables to enable registration.");
+        return;
+      }
+
       setLoading(true);
       setError("");
 
