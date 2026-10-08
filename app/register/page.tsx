@@ -39,8 +39,16 @@ export default function RegisterPage() {
       if (data.user) {
         router.push("/login");
       }
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+    } catch (err: unknown) {
+      if (err instanceof TypeError && err.message === "Failed to fetch") {
+        setError(
+          "Could not connect to Supabase. Check that your project is active and reachable. If you already tried registering, check whether the account was created before submitting again.",
+        );
+      } else if (err instanceof Error) {
+        setError(err.message || "Registration failed.");
+      } else {
+        setError("Registration failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -77,7 +85,11 @@ export default function RegisterPage() {
             className="w-full rounded-md border border-slate-200 px-3 py-2 outline-none"
           />
 
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
+          {error ? (
+            <p role="alert" className="text-sm text-red-600">
+              {error}
+            </p>
+          ) : null}
 
           <Button className="w-full" onClick={handleRegister} disabled={loading}>
             {loading ? "Creating account..." : "Create Account"}

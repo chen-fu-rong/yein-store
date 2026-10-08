@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { AddToCartButton } from "@/components/add-to-cart-button";
+import { PrintQuoteCalculator } from "@/components/print-quote-calculator";
 import { createClient } from "@/lib/supabase/server";
 
 type Product = {
@@ -21,34 +22,23 @@ const formatPrice = (value: number) =>
 
 export default async function Home() {
   const supabase = await createClient();
+  let productList: Product[] = [];
+  let catalogUnavailable = !supabase;
 
-  if (!supabase) {
-    return (
-      <main className="min-h-screen bg-slate-50 px-6 py-16">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-            Storefront status
-          </p>
-          <h1 className="mt-3 text-3xl font-bold text-slate-900">Supabase is not configured yet.</h1>
-          <p className="mt-4 text-slate-600">
-            Add your NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY values to enable the catalog and auth flows.
-          </p>
-        </div>
-      </main>
-    );
+  if (supabase) {
+    const { data: products, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.warn("Unable to fetch storefront products:", error.message);
+      catalogUnavailable = true;
+    }
+
+    productList = (products ?? []) as Product[];
   }
-
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Error fetching products:", error.message);
-  }
-
-  const productList = (products ?? []) as Product[];
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -91,6 +81,8 @@ export default async function Home() {
           </Link>
         </div>
 
+        <PrintQuoteCalculator />
+
         <div className="mb-12 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-sm text-slate-500">Products</p>
@@ -115,10 +107,22 @@ export default async function Home() {
         </div>
 
         {productList.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-            <p className="text-slate-600">
-              No products are available yet. Add rows in Supabase to populate this storefront.
-            </p>
+          <div
+            role={catalogUnavailable ? "status" : undefined}
+            className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"
+          >
+            {catalogUnavailable ? (
+              <>
+                <p className="font-medium text-slate-800">The product catalog is temporarily unavailable.</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  We could not connect to the storefront database. Please try again in a little while.
+                </p>
+              </>
+            ) : (
+              <p className="text-slate-600">
+                No products are available yet. Add rows in Supabase to populate this storefront.
+              </p>
+            )}
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">

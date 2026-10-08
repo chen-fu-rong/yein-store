@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/lib/supabase/client";
-
-const allowedExtensions = ["stl", "obj", "step", "stp"];
 
 export default function CustomPrintPage() {
   const [name, setName] = useState("");
@@ -12,62 +9,6 @@ export default function CustomPrintPage() {
   const [material, setMaterial] = useState("PLA");
   const [color, setColor] = useState("Black");
   const [notes, setNotes] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [uploadedPath, setUploadedPath] = useState("");
-  const [uploadedUrl, setUploadedUrl] = useState("");
-  const [error, setError] = useState("");
-
-  async function handleUpload() {
-    if (!file) {
-      setError("Please select a 3D file first.");
-      return;
-    }
-
-    if (!supabase) {
-      setError("Supabase is not configured yet. Add your environment variables to enable uploads.");
-      return;
-    }
-
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    if (!extension || !allowedExtensions.includes(extension)) {
-      setError("Only .stl, .obj, .step, and .stp files are allowed.");
-      return;
-    }
-
-    try {
-      setUploading(true);
-      setError("");
-
-      const sanitizedName = file.name.replace(/\s+/g, "-");
-      const path = `custom-prints/${Date.now()}-${sanitizedName}`;
-
-      const { data, error: uploadError } = await supabase.storage
-        .from("secure-3d-files")
-        .upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "application/octet-stream",
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-        .from("secure-3d-files")
-        .createSignedUrl(data.path, 60 * 60);
-
-      if (signedUrlError) throw signedUrlError;
-
-      setUploadedPath(data.path);
-      setUploadedUrl(signedUrlData.signedUrl);
-    } catch (err: any) {
-      setError(err.message || "Upload failed");
-      setUploadedPath("");
-      setUploadedUrl("");
-    } finally {
-      setUploading(false);
-    }
-  }
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-16">
@@ -114,16 +55,6 @@ export default function CustomPrintPage() {
           </select>
         </div>
 
-        <div className="mt-5">
-          <label className="mb-2 block text-sm font-medium text-slate-700">Upload 3D model</label>
-          <input
-            type="file"
-            accept=".stl,.obj,.step,.stp"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="block w-full rounded-md border border-dashed border-slate-300 bg-slate-50 p-3 text-sm"
-          />
-        </div>
-
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -131,19 +62,10 @@ export default function CustomPrintPage() {
           className="mt-5 min-h-32 w-full rounded-md border border-slate-200 px-3 py-2 outline-none"
         />
 
-        {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
-        {uploadedUrl ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-            <p className="font-medium">Secure upload complete.</p>
-            <p className="mt-1 break-all">Stored path: {uploadedPath}</p>
-          </div>
-        ) : null}
-
-        <div className="mt-6 flex gap-3">
-          <Button onClick={handleUpload} disabled={uploading}>
-            {uploading ? "Uploading..." : "Upload model"}
+        <div className="mt-6">
+          <Button variant="outline" className="min-h-12 w-full sm:w-auto">
+            Request quote
           </Button>
-          <Button variant="outline">Request quote</Button>
         </div>
       </div>
     </main>
