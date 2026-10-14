@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { supabase } from "@/lib/supabase/client";
+import { playOrderNotificationChime } from "@/lib/order-notifications";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -23,6 +25,7 @@ type OrderStatus = "Queued" | "Printing" | "Completed";
 
 type Order = {
   id: string;
+  orderNumber: string;
   customer: string;
   fileName: string;
   price: number;
@@ -59,6 +62,7 @@ type CartLine = {
 type InventoryState = "loading" | "live" | "fallback";
 
 const MATERIALS_API_URL = "/api/bambuddy/materials";
+const POS_PRINT_QUEUE_STORAGE_KEY = "yein-pos-print-queue";
 const MOCK_MATERIALS: Spool[] = [
   { id: 1, name: "Bambu PLA Black", weightGrams: 1000, priceMMK: 76000, colorHex: "#000000" },
 ];
@@ -67,15 +71,6 @@ const MACHINE_WEAR_PER_HOUR = 300;
 const SETUP_FEE = 1000;
 const FAIL_RATE = 1.1;
 const PROFIT_MARGIN = 2;
-
-const initialOrders: Order[] = [
-  { id: "YS-1048", customer: "Maya Lin", fileName: "Desk organizer.stl", price: 18_400, status: "Queued" },
-  { id: "YS-1049", customer: "Ko Aung", fileName: "Camera mount v2.stl", price: 12_600, status: "Queued" },
-  { id: "YS-1046", customer: "Thiri Win", fileName: "Planter set.stl", price: 26_800, status: "Printing" },
-  { id: "YS-1047", customer: "Noah Chen", fileName: "Cable clips.stl", price: 8_200, status: "Printing" },
-  { id: "YS-1044", customer: "Su Myat", fileName: "Miniature house.stl", price: 34_500, status: "Completed" },
-  { id: "YS-1045", customer: "Ethan Oo", fileName: "Phone stand.stl", price: 9_600, status: "Completed" },
-];
 
 const statusStyles: Record<OrderStatus, { dot: string; badge: string }> = {
   Queued: {
@@ -94,6 +89,44 @@ const statusStyles: Record<OrderStatus, { dot: string; badge: string }> = {
 
 function formatMMK(amount: number, maximumFractionDigits = 0) {
   return `${new Intl.NumberFormat("en-US", { maximumFractionDigits }).format(amount)} MMK`;
+}
+
+function getOrderWorkflowError(error: unknown, fallback: string) {
+  const message =
+    typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+      ? error.message
+      : error instanceof Error
+        ? error.message
+        : fallback;
+  const code =
+    typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+      ? error.code
+      : "";
+
+  if (
+    code === "PGRST202" ||
+    /function .*?create_pos_order.*?(not found|schema cache)/i.test(message)
+  ) {
+    return "Run supabase/migrations/202610140002_store_checkout_receipts.sql in Supabase to enable persistent POS orders.";
+  }
+  if (message.includes("INSUFFICIENT_STOCK")) {
+    return "One or more products no longer have enough stock. Refresh inventory and review the cart.";
+  }
+  return message;
+}
+
+function isStoredPrintOrder(value: unknown): value is Order {
+  if (typeof value !== "object" || value === null) return false;
+  const order = value as Record<string, unknown>;
+  return (
+    typeof order.id === "string" &&
+    typeof order.orderNumber === "string" &&
+    typeof order.customer === "string" &&
+    typeof order.fileName === "string" &&
+    typeof order.price === "number" &&
+    Number.isFinite(order.price) &&
+    (order.status === "Queued" || order.status === "Printing" || order.status === "Completed")
+  );
 }
 
 function isMaterial(value: unknown): value is Spool {
@@ -438,16 +471,18 @@ function NewOrderForm({
 function OrderCard({
   order,
   onAdvanceStatus,
+  onArchive,
 }: {
   order: Order;
   onAdvanceStatus: (orderId: string) => void;
+  onArchive: (orderId: string) => void;
 }) {
   const style = statusStyles[order.status];
 
   return (
     <article className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
-        <span className="font-mono text-[11px] font-medium text-slate-400">{order.id}</span>
+        <span className="font-mono text-[11px] font-medium text-slate-400">{order.orderNumber}</span>
         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${style.badge}`}>
           <span className={`size-1.5 rounded-full ${style.dot}`} />
           {order.status}
@@ -470,9 +505,17 @@ function OrderCard({
           onClick={() => onAdvanceStatus(order.id)}
           className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
         >
-          {order.status === "Queued" ? "Start printing" : "Mark completed"}
+          {order.status === "Queued" ? "Start Printing" : "Mark Completed"}
         </button>
-      ) : null}
+      ) : (
+        <button
+          type="button"
+          onClick={() => onArchive(order.id)}
+          className="mt-3 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+        >
+          Archive / Remove
+        </button>
+      )}
     </article>
   );
 }
@@ -480,9 +523,13 @@ function OrderCard({
 function OrderBoard({
   orders,
   onAdvanceStatus,
+  onArchive,
+  loading,
 }: {
   orders: Order[];
   onAdvanceStatus: (orderId: string) => void;
+  onArchive: (orderId: string) => void;
+  loading: boolean;
 }) {
   const columns: { title: OrderStatus; icon: React.ReactNode }[] = [
     { title: "Queued", icon: <ArrowDownRight size={15} /> },
@@ -500,7 +547,7 @@ function OrderBoard({
         />
         <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm">
           <span className="size-1.5 animate-pulse rounded-full bg-emerald-500" />
-          {orders.length} active orders
+          {orders.filter((order) => order.status !== "Completed").length} active orders
           <ArrowUpRight size={13} className="text-slate-400" />
         </span>
       </div>
@@ -528,13 +575,22 @@ function OrderBoard({
                 </span>
               </header>
               <div className="space-y-3">
-                {columnOrders.length > 0 ? (
+                {loading ? (
+                  <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
+                    Loading orders…
+                  </p>
+                ) : columnOrders.length > 0 ? (
                   columnOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} onAdvanceStatus={onAdvanceStatus} />
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      onAdvanceStatus={onAdvanceStatus}
+                      onArchive={onArchive}
+                    />
                   ))
                 ) : (
                   <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
-                    No orders yet
+                    No {title.toLowerCase()} orders
                   </p>
                 )}
               </div>
@@ -615,7 +671,83 @@ export function POSWorkspace() {
     stock: "",
     image_url: "",
   });
-  const [orders, setOrders] = useState(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersStorageReady, setOrdersStorageReady] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [newOrderNotice, setNewOrderNotice] = useState("");
+  const noticeTimeout = useRef<number | null>(null);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => {
+      try {
+        const storedOrders = window.localStorage.getItem(POS_PRINT_QUEUE_STORAGE_KEY);
+        if (storedOrders) {
+          const parsed: unknown = JSON.parse(storedOrders);
+          if (!Array.isArray(parsed) || !parsed.every(isStoredPrintOrder)) {
+            throw new Error("Saved print jobs are in an unexpected format.");
+          }
+          setOrders(parsed);
+        }
+        setOrdersStorageReady(true);
+      } catch (storageError) {
+        setOrdersError(
+          storageError instanceof Error
+            ? `Saved print jobs could not be loaded: ${storageError.message}`
+            : "Saved print jobs could not be loaded.",
+        );
+      } finally {
+        setOrdersLoaded(true);
+        setOrdersLoading(false);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!ordersLoaded || !ordersStorageReady) return;
+    try {
+      window.localStorage.setItem(POS_PRINT_QUEUE_STORAGE_KEY, JSON.stringify(orders));
+    } catch (storageError) {
+      void Promise.resolve().then(() =>
+        setOrdersError(
+          storageError instanceof Error
+            ? `Print jobs could not be saved on this device: ${storageError.message}`
+            : "Print jobs could not be saved on this device.",
+        ),
+      );
+    }
+  }, [orders, ordersLoaded, ordersStorageReady]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client) return;
+    const channel = client
+      .channel("pos-new-store-orders")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, (payload) => {
+        const newOrder = payload.new;
+        if (newOrder.payment_method !== "bank_transfer") return;
+
+        const customerName =
+          typeof newOrder.customer_name === "string" && newOrder.customer_name.trim()
+            ? newOrder.customer_name.trim()
+            : "a customer";
+        setNewOrderNotice(`🔔 New store order received from ${customerName}!`);
+        playOrderNotificationChime();
+        if (noticeTimeout.current !== null) window.clearTimeout(noticeTimeout.current);
+        noticeTimeout.current = window.setTimeout(() => setNewOrderNotice(""), 8_000);
+      })
+      .subscribe((status, error) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          setOrdersError(error?.message || "Live store order notifications are unavailable.");
+        }
+      });
+
+    return () => {
+      if (noticeTimeout.current !== null) window.clearTimeout(noticeTimeout.current);
+      void client.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -886,43 +1018,64 @@ export function POSWorkspace() {
       setOrderError("Add at least one item and enter the customer name before completing the order.");
       return;
     }
+    if (!supabase) {
+      setOrderError("Supabase is not configured. The order cannot be saved.");
+      return;
+    }
     setOrderBusy(true);
     setOrderError("");
     try {
+      const { data, error } = await supabase.rpc("create_pos_order", {
+        p_customer_name: customerName.trim(),
+        p_customer_phone: customerPhone.trim() || null,
+        p_subtotal: cartTotal,
+        p_discount: appliedDiscount,
+        p_items: cart.map((item) => ({
+          product_id: item.productId ?? null,
+          name: item.name,
+          quantity: item.quantity,
+          unit_price: item.price,
+        })),
+      });
+      if (error) throw error;
+      if (
+        typeof data !== "object" ||
+        data === null ||
+        !("id" in data) ||
+        typeof data.id !== "string" ||
+        !("order_number" in data) ||
+        typeof data.order_number !== "string"
+      ) {
+        throw new Error("The order was saved but Supabase returned an invalid order record.");
+      }
+
       const readyMadeItems = cart
         .filter((item): item is CartLine & { productId: string } => Boolean(item.productId))
         .map((item) => ({ id: item.productId, quantity: item.quantity }));
-      if (readyMadeItems.length > 0) {
-        const response = await fetch("/api/admin/products/complete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: readyMadeItems }),
-        });
-        await readApiResponse(response);
-        setProducts((current) =>
-          current.map((product) => {
-            const purchased = readyMadeItems
-              .filter((item) => item.id === product.id)
-              .reduce((total, item) => total + item.quantity, 0);
-            return purchased ? { ...product, stock: product.stock - purchased } : product;
-          }),
-        );
-      }
-      setOrders((current) => [
-        {
-          id: `YS-${Date.now()}`,
+      setProducts((current) =>
+        current.map((product) => {
+          const purchased = readyMadeItems
+            .filter((item) => item.id === product.id)
+            .reduce((total, item) => total + item.quantity, 0);
+          return purchased ? { ...product, stock: product.stock - purchased } : product;
+        }),
+      );
+      const printJobs = cart
+        .filter((item) => item.kind === "custom")
+        .map((item, index) => ({
+          id: `${data.id}:print:${index}`,
+          orderNumber: `${data.order_number}-${String(index + 1).padStart(2, "0")}`,
           customer: customerName.trim(),
-          fileName: cart.map((item) => `${item.name} × ${item.quantity}`).join(", "),
-          price: netTotal,
-          status: "Queued",
-        },
-        ...current,
-      ]);
+          fileName: `${item.name}${item.quantity > 1 ? ` × ${item.quantity}` : ""}`,
+          price: item.price * item.quantity,
+          status: "Queued" as const,
+        }));
+      if (printJobs.length > 0) setOrders((current) => [...printJobs, ...current]);
       setReceiptDate(new Date().toLocaleString());
       setOrderComplete(true);
       window.requestAnimationFrame(() => window.print());
     } catch (error) {
-      setOrderError(error instanceof Error ? error.message : "Unable to complete this order.");
+      setOrderError(getOrderWorkflowError(error, "Unable to save this order."));
     } finally {
       setOrderBusy(false);
     }
@@ -939,22 +1092,26 @@ export function POSWorkspace() {
   }
 
   function advanceOrderStatus(orderId: string) {
+    const order = orders.find((item) => item.id === orderId);
+    if (!order || order.status === "Completed") return;
+    const nextStatus: OrderStatus = order.status === "Queued" ? "Printing" : "Completed";
     setOrders((current) =>
-      current.map((order) => {
-        if (order.id !== orderId) return order;
-        const nextStatus: Record<OrderStatus, OrderStatus> = {
-          Queued: "Printing",
-          Printing: "Completed",
-          Completed: "Completed",
-        };
-        return { ...order, status: nextStatus[order.status] };
-      }),
+      current.map((item) => (item.id === orderId ? { ...item, status: nextStatus } : item)),
     );
+  }
+
+  function archiveOrder(orderId: string) {
+    setOrders((current) => current.filter((item) => item.id !== orderId));
   }
 
   return (
     <main className="min-h-screen bg-[#f6f7f5] px-4 py-6 text-slate-900 sm:px-6 sm:py-8 lg:px-8 print:bg-white print:p-0">
       <div className="mx-auto max-w-7xl">
+        {newOrderNotice ? (
+          <div role="status" aria-live="polite" className="mb-5 rounded-xl border border-emerald-300 bg-emerald-50 px-5 py-4 text-base font-semibold text-emerald-900 shadow-sm print:hidden">
+            {newOrderNotice}
+          </div>
+        ) : null}
         <header className="mb-7 flex flex-wrap items-center justify-between gap-4 print:hidden">
           <Link href="/" className="group inline-flex items-center gap-3" aria-label="Yein Studio home">
             <span className="grid size-10 place-items-center rounded-xl bg-slate-900 text-white shadow-sm transition group-hover:bg-slate-800">
@@ -1218,7 +1375,17 @@ export function POSWorkspace() {
                 </div>
               </section>
             </div>
-            <OrderBoard orders={orders} onAdvanceStatus={advanceOrderStatus} />
+            {ordersError ? (
+              <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">
+                Order board: {ordersError}
+              </p>
+            ) : null}
+            <OrderBoard
+              orders={orders}
+              onAdvanceStatus={advanceOrderStatus}
+              onArchive={archiveOrder}
+              loading={ordersLoading}
+            />
           </>
         ) : (
           <section className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)] print:hidden">

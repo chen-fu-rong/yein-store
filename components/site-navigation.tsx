@@ -3,12 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ShoppingCart } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useCart } from "@/components/providers/cart-provider";
 import { supabase } from "@/lib/supabase/client";
 
 export function SiteNavigation() {
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { itemCount } = useCart();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
 
@@ -49,6 +52,19 @@ export function SiteNavigation() {
           </Link>
           <Link href="/store" className="text-sm text-slate-600 hover:text-slate-900">
             Ready-made shop
+          </Link>
+          <Link
+            href="/cart"
+            aria-label={`Shopping cart, ${itemCount} ${itemCount === 1 ? "item" : "items"}`}
+            className="relative inline-flex size-10 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            <ShoppingCart size={19} aria-hidden="true" />
+            <span className="sr-only">Cart</span>
+            {itemCount > 0 ? (
+              <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-slate-900 px-1 text-[10px] font-bold leading-none text-white">
+                {itemCount > 99 ? "99+" : itemCount}
+              </span>
+            ) : null}
           </Link>
           {!loading && user ? (
             <>

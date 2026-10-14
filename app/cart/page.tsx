@@ -1,8 +1,23 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/components/providers/cart-provider";
+
+function formatMMK(value: number) {
+  return `${new Intl.NumberFormat("en-US").format(value)} MMK`;
+}
+
+function isCloudinaryUrl(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "res.cloudinary.com";
+  } catch {
+    return false;
+  }
+}
 
 export default function CartPage() {
   const { items, subtotal, updateQuantity, removeItem } = useCart();
@@ -15,7 +30,7 @@ export default function CartPage() {
         {items.length === 0 ? (
           <div className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
             <p className="text-slate-600">Your cart is empty.</p>
-            <Link href="/" className="mt-4 inline-block">
+            <Link href="/store" className="mt-4 inline-block">
               <Button>Continue shopping</Button>
             </Link>
           </div>
@@ -28,8 +43,10 @@ export default function CartPage() {
                   className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4"
                 >
                   <div className="flex items-center gap-4">
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name} className="h-16 w-16 rounded-lg object-cover" />
+                    {isCloudinaryUrl(item.image_url) ? (
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg">
+                        <Image src={item.image_url} alt={item.name} fill sizes="64px" className="object-cover" />
+                      </div>
                     ) : (
                       <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-slate-100 text-xs text-slate-500">
                         No image
@@ -37,7 +54,7 @@ export default function CartPage() {
                     )}
                     <div>
                       <p className="font-medium text-slate-900">{item.name}</p>
-                      <p className="text-sm text-slate-500">${item.price.toFixed(2)} each</p>
+                      <p className="text-sm text-slate-500">{formatMMK(item.price)} each</p>
                     </div>
                   </div>
 
@@ -61,7 +78,7 @@ export default function CartPage() {
                     </div>
 
                     <p className="w-20 text-right font-semibold text-slate-900">
-                      ${(item.price * item.quantity).toFixed(2)}
+                      {formatMMK(item.price * item.quantity)}
                     </p>
 
                     <button
@@ -78,11 +95,11 @@ export default function CartPage() {
 
             <div className="mt-8 flex items-center justify-between rounded-xl bg-slate-50 p-4">
               <span className="text-lg font-semibold text-slate-900">Subtotal</span>
-              <span className="text-lg font-bold text-slate-900">${subtotal.toFixed(2)}</span>
+              <span className="text-lg font-bold text-slate-900">{formatMMK(subtotal)}</span>
             </div>
 
             <div className="mt-8 flex gap-3">
-              <Link href="/" className="flex-1">
+              <Link href="/store" className="flex-1">
                 <Button variant="outline" className="w-full">
                   Continue shopping
                 </Button>

@@ -33,6 +33,30 @@ export async function POST(request: Request) {
     return Response.json({ error: "Provide at least one product with a valid ID and positive whole-number quantity." }, { status: 400 });
   }
 
+  if (body.orderId !== undefined) {
+    if (
+      typeof body.orderId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.orderId)
+    ) {
+      return Response.json({ error: "Provide a valid order ID." }, { status: 400 });
+    }
+
+    const { error: verificationError } = await supabase.rpc("verify_store_order_payment", {
+      p_order_id: body.orderId,
+      p_items: body.items,
+    });
+
+    if (verificationError) {
+      const unavailable = verificationError.message.includes("INSUFFICIENT_STOCK");
+      return Response.json(
+        { error: unavailable ? "One or more items no longer have enough stock. Refresh inventory and retry." : verificationError.message },
+        { status: unavailable ? 409 : 500 },
+      );
+    }
+
+    return Response.json({ success: true });
+  }
+
   const { error: deductionError } = await supabase.rpc("deduct_product_stock", {
     p_items: body.items,
   });

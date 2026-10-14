@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { useCart } from "@/components/providers/cart-provider";
 
 type StoreProduct = {
   id: string;
@@ -27,11 +30,24 @@ function isCloudinaryUrl(value: string | null): value is string {
 }
 
 export default function StoreProductCard({ product }: { product: StoreProduct }) {
+  const router = useRouter();
+  const { items, addItem } = useCart();
   const inStock = product.stock > 0;
   const [quantity, setQuantity] = useState(inStock ? 1 : 0);
-  const orderMessage = encodeURIComponent(
-    `မင်္ဂလာပါ၊ ${product.name} ကို မှာယူချင်ပါတယ်။ ဈေးနှုန်း: ${formatMMK(product.price)}၊ အရေအတွက်: ${quantity} ခု။`,
-  );
+  const cartQuantity = items.find((item) => item.id === product.id)?.quantity ?? 0;
+  const canAdd = inStock && cartQuantity + quantity <= product.stock && cartQuantity + quantity <= 99;
+
+  function addProductToCart() {
+    addItem(
+      {
+        id: product.id,
+        name: product.name,
+        price: Number(product.price),
+        image_url: product.image_url,
+      },
+      quantity,
+    );
+  }
 
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -85,7 +101,7 @@ export default function StoreProductCard({ product }: { product: StoreProduct })
             <button
               type="button"
               aria-label={`Increase ${product.name} quantity`}
-              disabled={!inStock || quantity >= product.stock}
+              disabled={!inStock || quantity >= Math.min(product.stock, 99)}
               onClick={() => setQuantity((current) => Math.min(product.stock, current + 1))}
               className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-lg font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -95,26 +111,24 @@ export default function StoreProductCard({ product }: { product: StoreProduct })
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <a
-            href={inStock ? `https://t.me/applingg?text=${orderMessage}` : undefined}
-            aria-disabled={!inStock}
-            tabIndex={inStock ? undefined : -1}
-            className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-white ${
-              inStock ? "bg-sky-600 hover:bg-sky-700" : "pointer-events-none bg-slate-300"
-            }`}
+          <Button
+            variant="outline"
+            disabled={!canAdd}
+            onClick={addProductToCart}
+            className="h-auto min-h-11 whitespace-normal rounded-xl px-3 py-2.5 text-sm"
           >
-            Buy via Telegram
-          </a>
-          <a
-            href={inStock ? `viber://chat?number=%2B9595104519&draft=${orderMessage}` : undefined}
-            aria-disabled={!inStock}
-            tabIndex={inStock ? undefined : -1}
-            className={`rounded-xl px-3 py-2.5 text-center text-sm font-semibold text-white ${
-              inStock ? "bg-violet-600 hover:bg-violet-700" : "pointer-events-none bg-slate-300"
-            }`}
+            Add to Cart
+          </Button>
+          <Button
+            disabled={!canAdd}
+            onClick={() => {
+              addProductToCart();
+              router.push("/checkout");
+            }}
+            className="h-auto min-h-11 whitespace-normal rounded-xl px-3 py-2.5 text-sm"
           >
-            Buy via Viber
-          </a>
+            Buy Now
+          </Button>
         </div>
       </div>
     </article>

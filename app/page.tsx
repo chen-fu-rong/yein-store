@@ -3,7 +3,6 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Gallery } from "@/components/gallery";
 import { PrintQuoteCalculator } from "@/components/print-quote-calculator";
-import { SiteNavigation } from "@/components/site-navigation";
 import { createClient } from "@/lib/supabase/server";
 
 type Product = {
@@ -49,8 +48,6 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <SiteNavigation />
-
       <section className="mx-auto max-w-7xl px-6 py-16">
         <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
