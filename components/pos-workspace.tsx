@@ -362,14 +362,6 @@ function PricingCalculator({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => window.alert("Bambuddy upload and auto-slicing integration is coming soon.")}
-        className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-violet-200"
-      >
-        <Printer size={17} />
-        Upload &amp; Auto Slice (via Bambuddy)
-      </button>
     </section>
   );
 }
@@ -443,7 +435,13 @@ function NewOrderForm({
   );
 }
 
-function OrderCard({ order }: { order: Order }) {
+function OrderCard({
+  order,
+  onAdvanceStatus,
+}: {
+  order: Order;
+  onAdvanceStatus: (orderId: string) => void;
+}) {
   const style = statusStyles[order.status];
 
   return (
@@ -466,11 +464,26 @@ function OrderCard({ order }: { order: Order }) {
         <span className="text-xs text-slate-400">Total</span>
         <span className="text-sm font-semibold text-slate-900">{formatMMK(order.price)}</span>
       </div>
+      {order.status !== "Completed" ? (
+        <button
+          type="button"
+          onClick={() => onAdvanceStatus(order.id)}
+          className="mt-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+        >
+          {order.status === "Queued" ? "Start printing" : "Mark completed"}
+        </button>
+      ) : null}
     </article>
   );
 }
 
-function OrderBoard({ orders }: { orders: Order[] }) {
+function OrderBoard({
+  orders,
+  onAdvanceStatus,
+}: {
+  orders: Order[];
+  onAdvanceStatus: (orderId: string) => void;
+}) {
   const columns: { title: OrderStatus; icon: React.ReactNode }[] = [
     { title: "Queued", icon: <ArrowDownRight size={15} /> },
     { title: "Printing", icon: <Printer size={15} /> },
@@ -516,7 +529,9 @@ function OrderBoard({ orders }: { orders: Order[] }) {
               </header>
               <div className="space-y-3">
                 {columnOrders.length > 0 ? (
-                  columnOrders.map((order) => <OrderCard key={order.id} order={order} />)
+                  columnOrders.map((order) => (
+                    <OrderCard key={order.id} order={order} onAdvanceStatus={onAdvanceStatus} />
+                  ))
                 ) : (
                   <p className="rounded-xl border border-dashed border-slate-300 px-3 py-6 text-center text-xs text-slate-400">
                     No orders yet
@@ -584,6 +599,7 @@ export function POSWorkspace() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [discountInput, setDiscountInput] = useState("0");
   const [documentType, setDocumentType] = useState<"QUOTATION" | "RECEIPT">("RECEIPT");
   const [orderError, setOrderError] = useState("");
   const [orderComplete, setOrderComplete] = useState(false);
@@ -599,7 +615,7 @@ export function POSWorkspace() {
     stock: "",
     image_url: "",
   });
-  const [orders] = useState(initialOrders);
+  const [orders, setOrders] = useState(initialOrders);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -729,6 +745,10 @@ export function POSWorkspace() {
   const finalPrice = Math.ceil(unroundedFinalPrice / 500) * 500;
 
   const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const requestedDiscount = Number(discountInput);
+  const discount = Number.isFinite(requestedDiscount) ? Math.max(0, requestedDiscount) : 0;
+  const appliedDiscount = Math.min(discount, cartTotal);
+  const netTotal = cartTotal - appliedDiscount;
   const filteredProducts = products.filter((product) =>
     product.name.toLowerCase().includes(productSearch.trim().toLowerCase()),
   );
@@ -888,6 +908,16 @@ export function POSWorkspace() {
           }),
         );
       }
+      setOrders((current) => [
+        {
+          id: `YS-${Date.now()}`,
+          customer: customerName.trim(),
+          fileName: cart.map((item) => `${item.name} × ${item.quantity}`).join(", "),
+          price: netTotal,
+          status: "Queued",
+        },
+        ...current,
+      ]);
       setReceiptDate(new Date().toLocaleString());
       setOrderComplete(true);
       window.requestAnimationFrame(() => window.print());
@@ -902,9 +932,24 @@ export function POSWorkspace() {
     setCart([]);
     setCustomerName("");
     setCustomerPhone("");
+    setDiscountInput("0");
     setOrderError("");
     setOrderComplete(false);
     setReceiptDate("");
+  }
+
+  function advanceOrderStatus(orderId: string) {
+    setOrders((current) =>
+      current.map((order) => {
+        if (order.id !== orderId) return order;
+        const nextStatus: Record<OrderStatus, OrderStatus> = {
+          Queued: "Printing",
+          Printing: "Completed",
+          Completed: "Completed",
+        };
+        return { ...order, status: nextStatus[order.status] };
+      }),
+    );
   }
 
   return (
@@ -1030,7 +1075,8 @@ export function POSWorkspace() {
                     ) : (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {filteredProducts.map((product) => {
-                          const inCart = cart.find((item) => item.productId === product.id)?.quantity ?? 0;
+                          const cartLine = cart.find((item) => item.productId === product.id);
+                          const inCart = cartLine?.quantity ?? 0;
                           return (
                             <article key={product.id} className="overflow-hidden rounded-xl border border-slate-200">
                               <div className="relative aspect-[4/3] bg-slate-100">
@@ -1047,15 +1093,37 @@ export function POSWorkspace() {
                                     Stock: {product.stock}
                                   </span>
                                 </div>
-                                <p className="text-sm font-semibold text-slate-700">{formatMMK(product.price)}</p>
-                                <button
-                                  type="button"
-                                  disabled={product.stock === 0 || inCart >= product.stock || orderComplete}
-                                  onClick={() => addProduct(product)}
-                                  className="w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                                >
-                                  {product.stock === 0 ? "Out of stock" : inCart >= product.stock ? "All available units in cart" : "Add to Cart"}
-                                </button>
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-slate-700">{formatMMK(product.price)}</p>
+                                  <div className="flex items-center gap-2" role="group" aria-label={`${product.name} quantity`}>
+                                    <button
+                                      type="button"
+                                      aria-label={`Decrease ${product.name} quantity`}
+                                      disabled={inCart === 0 || orderComplete}
+                                      onClick={() => {
+                                        if (cartLine) updateQuantity(cartLine, inCart - 1);
+                                      }}
+                                      className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      −
+                                    </button>
+                                    <span className="min-w-14 text-center text-xs font-semibold text-slate-700">
+                                      {inCart} in cart
+                                    </span>
+                                    <button
+                                      type="button"
+                                      aria-label={`Add ${product.name} to cart`}
+                                      disabled={product.stock === 0 || inCart >= product.stock || orderComplete}
+                                      onClick={() => addProduct(product)}
+                                      className="grid size-8 place-items-center rounded-lg bg-slate-900 text-lg font-semibold text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </div>
+                                {product.stock === 0 && (
+                                  <p className="text-xs font-medium text-rose-600">Out of stock</p>
+                                )}
                               </div>
                             </article>
                           );
@@ -1112,9 +1180,34 @@ export function POSWorkspace() {
                   </select>
                 </label>
 
-                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4">
-                  <span className="text-sm font-medium text-slate-500">Order total</span>
-                  <span className="text-lg font-bold text-slate-950">{formatMMK(cartTotal)}</span>
+                <label className="mt-4 block text-sm font-medium text-slate-700">
+                  Discount (MMK)
+                  <input
+                    type="number"
+                    min="0"
+                    max={cartTotal}
+                    step="1"
+                    inputMode="numeric"
+                    value={discountInput}
+                    disabled={orderComplete}
+                    onChange={(event) => setDiscountInput(event.target.value)}
+                    className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-slate-400 disabled:bg-slate-50"
+                  />
+                </label>
+
+                <div className="mt-5 space-y-2 border-t border-slate-100 pt-4 text-sm">
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span>Subtotal</span>
+                    <span>{formatMMK(cartTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span>Discount</span>
+                    <span>−{formatMMK(appliedDiscount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1 font-semibold text-slate-950">
+                    <span>Net total</span>
+                    <span className="text-lg">{formatMMK(netTotal)}</span>
+                  </div>
                 </div>
                 {orderError ? <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{orderError}</p> : null}
                 <div className="mt-4 grid gap-2">
@@ -1125,7 +1218,7 @@ export function POSWorkspace() {
                 </div>
               </section>
             </div>
-            <OrderBoard orders={orders} />
+            <OrderBoard orders={orders} onAdvanceStatus={advanceOrderStatus} />
           </>
         ) : (
           <section className="grid items-start gap-5 lg:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)] print:hidden">
@@ -1212,7 +1305,20 @@ export function POSWorkspace() {
             <table className="w-full border-collapse text-sm">
               <thead><tr className="border-y border-black"><th className="py-2 text-left">Item</th><th className="py-2 text-right">Qty</th><th className="py-2 text-right">Unit price</th><th className="py-2 text-right">Total</th></tr></thead>
               <tbody>{cart.map((item) => <tr key={item.id} className="border-b border-slate-300"><td className="py-2">{item.name}</td><td className="py-2 text-right">{item.quantity}</td><td className="py-2 text-right">{formatMMK(item.price)}</td><td className="py-2 text-right">{formatMMK(item.price * item.quantity)}</td></tr>)}</tbody>
-              <tfoot><tr><td colSpan={3} className="py-3 text-right font-bold">TOTAL</td><td className="py-3 text-right font-bold">{formatMMK(cartTotal)}</td></tr></tfoot>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} className="pt-3 text-right">Subtotal</td>
+                  <td className="pt-3 text-right">{formatMMK(cartTotal)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={3} className="py-1 text-right">Discount</td>
+                  <td className="py-1 text-right">−{formatMMK(appliedDiscount)}</td>
+                </tr>
+                <tr className="border-t border-black">
+                  <td colSpan={3} className="py-3 text-right font-bold">NET TOTAL</td>
+                  <td className="py-3 text-right font-bold">{formatMMK(netTotal)}</td>
+                </tr>
+              </tfoot>
             </table>
             <p className="mt-8 text-center text-xs">Thank you for choosing Yein Store.</p>
           </div>

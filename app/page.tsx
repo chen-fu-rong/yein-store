@@ -18,6 +18,16 @@ type Product = {
 const formatPrice = (value: number) =>
   `${new Intl.NumberFormat("en-US").format(value)} MMK`;
 
+function isCloudinaryUrl(value: string | null): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.hostname === "res.cloudinary.com";
+  } catch {
+    return false;
+  }
+}
+
 export default async function Home() {
   const supabase = await createClient();
   let productList: Product[] = [];
@@ -52,7 +62,7 @@ export default async function Home() {
             </h1>
           </div>
 
-          <Link href="/custom-print">
+          <Link href="#quote-calculator-title">
             <Button>Request a custom print</Button>
           </Link>
         </div>
@@ -110,7 +120,7 @@ export default async function Home() {
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-md"
               >
                 <div className="relative h-64 overflow-hidden bg-slate-100">
-                  {product.image_url ? (
+                  {isCloudinaryUrl(product.image_url) ? (
                     <Image
                       src={product.image_url}
                       alt={product.name}

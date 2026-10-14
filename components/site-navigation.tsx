@@ -44,16 +44,12 @@ export function SiteNavigation() {
         </Link>
 
         <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
-          <Link href="/custom-print" className="text-sm text-slate-600 hover:text-slate-900">
+          <Link href="/#quote-calculator-title" className="text-sm text-slate-600 hover:text-slate-900">
             Custom print
           </Link>
           <Link href="/store" className="text-sm text-slate-600 hover:text-slate-900">
             Ready-made shop
           </Link>
-          <Link href="/cart" className="text-sm text-slate-600 hover:text-slate-900">
-            Cart
-          </Link>
-
           {!loading && user ? (
             <>
               <Link href="/pos" className="text-sm text-slate-600 hover:text-slate-900">
