@@ -1,7 +1,9 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { AddToCartButton } from "@/components/add-to-cart-button";
+import { Gallery } from "@/components/gallery";
 import { PrintQuoteCalculator } from "@/components/print-quote-calculator";
+import { SiteNavigation } from "@/components/site-navigation";
 import { createClient } from "@/lib/supabase/server";
 
 type Product = {
@@ -9,16 +11,12 @@ type Product = {
   name: string;
   description: string | null;
   price: number;
+  stock: number;
   image_url: string | null;
-  category: string | null;
-  slug: string;
 };
 
 const formatPrice = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(value);
+  `${new Intl.NumberFormat("en-US").format(value)} MMK`;
 
 export default async function Home() {
   const supabase = await createClient();
@@ -28,9 +26,8 @@ export default async function Home() {
   if (supabase) {
     const { data: products, error } = await supabase
       .from("products")
-      .select("*")
-      .eq("is_active", true)
-      .order("created_at", { ascending: false });
+      .select("id, name, description, price, stock, image_url")
+      .order("name", { ascending: true });
 
     if (error) {
       console.warn("Unable to fetch storefront products:", error.message);
@@ -42,28 +39,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen bg-slate-50">
-      <nav className="border-b border-slate-200 bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link href="/" className="text-lg font-bold text-slate-900">
-            Yein Store
-          </Link>
-
-          <div className="flex items-center gap-3">
-            <Link href="/custom-print" className="text-sm text-slate-600 hover:text-slate-900">
-              Custom print
-            </Link>
-            <Link href="/cart" className="text-sm text-slate-600 hover:text-slate-900">
-              Cart
-            </Link>
-            <Link href="/login" className="text-sm text-slate-600 hover:text-slate-900">
-              Login
-            </Link>
-            <Link href="/register" className="text-sm text-slate-600 hover:text-slate-900">
-              Register
-            </Link>
-          </div>
-        </div>
-      </nav>
+      <SiteNavigation />
 
       <section className="mx-auto max-w-7xl px-6 py-16">
         <div className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -102,6 +78,8 @@ export default async function Home() {
           </div>
         </div>
 
+        <Gallery />
+
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-900">Featured catalog</h2>
         </div>
@@ -133,10 +111,12 @@ export default async function Home() {
               >
                 <div className="relative h-64 overflow-hidden bg-slate-100">
                   {product.image_url ? (
-                    <img
+                    <Image
                       src={product.image_url}
                       alt={product.name}
-                      className="h-full w-full object-cover"
+                      fill
+                      sizes="(max-width: 768px) 100vw, 33vw"
+                      className="object-cover"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">
@@ -147,8 +127,8 @@ export default async function Home() {
 
                 <div className="space-y-4 p-5">
                   <div className="flex items-center justify-between gap-3">
-                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-                      {product.category ?? "Print"}
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${product.stock > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+                      {product.stock > 0 ? `In Stock: ${product.stock} left` : "Out of Stock"}
                     </span>
                     <p className="text-lg font-bold text-slate-900">{formatPrice(product.price)}</p>
                   </div>
@@ -161,10 +141,9 @@ export default async function Home() {
                   </div>
 
                   <div className="flex gap-3">
-                    <Link href={`/product/${product.slug}`} className="flex-1">
-                      <Button className="w-full">View details</Button>
+                    <Link href="/store" className="flex-1">
+                      <Button className="w-full">Order options</Button>
                     </Link>
-                    <AddToCartButton product={product} />
                   </div>
                 </div>
               </article>

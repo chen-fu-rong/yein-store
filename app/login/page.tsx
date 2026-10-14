@@ -13,6 +13,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function getDestination() {
+    const requestedPath = new URLSearchParams(window.location.search).get("next");
+    return requestedPath?.startsWith("/") && !requestedPath.startsWith("//")
+      ? requestedPath
+      : "/";
+  }
+
   async function handleEmailLogin() {
     try {
       if (!supabase) {
@@ -27,10 +34,10 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      router.push("/");
+      router.replace(getDestination());
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || "Login failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Login failed");
     } finally {
       setLoading(false);
     }
@@ -47,13 +54,13 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(getDestination())}`,
         },
       });
 
       if (error) throw error;
-    } catch (err: any) {
-      setError(err.message || "Google login failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Google login failed");
     } finally {
       setLoading(false);
     }

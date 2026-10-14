@@ -16,25 +16,28 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(supabase));
 
   useEffect(() => {
     const client = supabase;
 
-    if (!client) {
-      setLoading(false);
-      return;
-    }
+    if (!client) return;
 
-    const getUser = async () => {
-      const {
-        data: { user },
-      } = await client.auth.getUser();
-      setUser(user);
-      setLoading(false);
-    };
-
-    getUser();
+    let active = true;
+    client.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) console.warn("Unable to read the current auth session:", error.message);
+        setUser(data.session?.user ?? null);
+        setLoading(false);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.warn("Unable to read the current auth session:", error);
+        setUser(null);
+        setLoading(false);
+      });
 
     const { data: authListener } = client.auth.onAuthStateChange(
       async (_event, session) => {
@@ -44,6 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
+      active = false;
       authListener.subscription.unsubscribe();
     };
   }, []);

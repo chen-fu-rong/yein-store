@@ -20,6 +20,12 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Ready-made inventory
+
+The live storefront is available at `/store`; administrators manage products and sell them from `/pos`. The `products` table must contain `id` (UUID), `name` (text), `description` (text), `price` (numeric), `stock` (integer), and `image_url` (text). Product image URLs must use HTTPS on `res.cloudinary.com`.
+
+Before using the inventory, run [`supabase/migrations/202610140001_ready_made_inventory.sql`](./supabase/migrations/202610140001_ready_made_inventory.sql) in the Supabase SQL Editor. It grants public read access for the storefront, restricts product changes and stock deduction to profiles whose role is `admin`, and creates the transactional `deduct_product_stock` RPC used at checkout. The application server also checks the signed-in user's `profiles.role` before serving POS inventory APIs.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
