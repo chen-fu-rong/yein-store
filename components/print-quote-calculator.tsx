@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { Clock3, MessageCircle, Printer, Send, Weight } from "lucide-react";
 
 const filaments = [
-  { id: 1, name: "Standard PLA", pricePerKg: 76000 },
-  { id: 2, name: "Premium PETG/Silk", pricePerKg: 90000 },
+  { id: 1, name: "Standard PLA", pricePerKg: 100000 },
+  { id: 2, name: "Premium PETG/Silk", pricePerKg: 100000 },
 ];
 
 const formatMMK = (amount: number) =>
